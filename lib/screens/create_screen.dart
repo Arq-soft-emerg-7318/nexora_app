@@ -1,4 +1,15 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:image_picker/image_picker.dart';
+import '../services/upload_service.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+
+import '../services/auth_notifier.dart';
+import 'login_screen.dart';
+import 'home_screen.dart';
 
 class CreateScreen extends StatefulWidget {
   const CreateScreen({Key? key}) : super(key: key);
@@ -8,19 +19,28 @@ class CreateScreen extends StatefulWidget {
 }
 
 class _CreateScreenState extends State<CreateScreen> {
+  final TextEditingController _titleController = TextEditingController();
   final TextEditingController _contentController = TextEditingController();
-  final List<String> _selectedCategories = ['Innovación'];
+  final TextEditingController _communityController = TextEditingController();
 
-  final List<String> _categories = [
-    'Innovación',
-    'Seguridad',
-    'Geología',
-    'Sostenibilidad'
-  ];
+  // category name -> id mapping (sample ids). Ajusta más tarde con endpoint real.
+  final Map<String, int> _categoryMap = {
+    'Pontones': 1,
+    'Innovación': 2,
+    'Seguridad': 3,
+    'Geología': 4,
+    'Sostenibilidad': 5,
+  };
+
+  String _selectedCategory = 'Pontones';
+  File? _selectedFile;
+  bool _posting = false;
 
   @override
   void dispose() {
+    _titleController.dispose();
     _contentController.dispose();
+    _communityController.dispose();
     super.dispose();
   }
 
@@ -161,7 +181,7 @@ class _CreateScreenState extends State<CreateScreen> {
             ),
             const SizedBox(height: 28),
 
-            // Categoría
+            // Categoría (single select)
             const Text(
               'Categoría',
               style: TextStyle(
@@ -171,44 +191,59 @@ class _CreateScreenState extends State<CreateScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _categories.map((category) {
-                final isSelected = _selectedCategories.contains(category);
-                return FilterChip(
-                  label: Text(category),
-                  selected: isSelected,
-                  onSelected: (selected) {
-                    setState(() {
-                      if (selected) {
-                        _selectedCategories.clear();
-                        _selectedCategories.add(category);
-                      }
-                    });
-                  },
-                  backgroundColor: Colors.grey[100],
-                  selectedColor: const Color(0xFF5B9FED),
-                  labelStyle: TextStyle(
-                    color: isSelected ? Colors.white : Colors.grey[700],
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                    fontSize: 14,
-                  ),
-                  side: BorderSide(
-                    color: isSelected
-                        ? const Color(0xFF5B9FED)
-                        : Colors.grey[300]!,
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                );
-              }).toList(),
+            DropdownButtonFormField<String>(
+              value: _selectedCategory,
+              items: _categoryMap.keys
+                  .map((k) => DropdownMenuItem(value: k, child: Text(k)))
+                  .toList(),
+              onChanged: (v) {
+                if (v != null) setState(() => _selectedCategory = v);
+              },
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: Colors.grey[50],
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+              ),
             ),
+            const SizedBox(height: 16),
+
+            // Título
+            const Text(
+              'Título',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _titleController,
+              decoration: InputDecoration(
+                hintText: 'Escribe un título',
+                filled: true,
+                fillColor: Colors.grey[50],
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // CommunityId opcional
+            const Text(
+              'Community ID (opcional)',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _communityController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                hintText: 'Dejar vacío si no aplica',
+                filled: true,
+                fillColor: Colors.grey[50],
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              ),
+            ),
+            const SizedBox(height: 16),
             const SizedBox(height: 28),
 
             // Contenido
@@ -264,31 +299,9 @@ class _CreateScreenState extends State<CreateScreen> {
               children: [
                 Expanded(
                   child: _buildAttachmentOption(
-                    icon: Icons.image_outlined,
-                    label: 'Imagen',
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Seleccionar imagen'),
-                          duration: Duration(seconds: 1),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildAttachmentOption(
-                    icon: Icons.description_outlined,
-                    label: 'Documento',
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Seleccionar documento'),
-                          duration: Duration(seconds: 1),
-                        ),
-                      );
-                    },
+                    icon: Icons.attach_file_outlined,
+                    label: _selectedFile != null ? 'Archivo seleccionado' : 'Adjuntar archivo',
+                    onTap: _pickFile,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -303,11 +316,188 @@ class _CreateScreenState extends State<CreateScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 18),
+            if (_selectedFile != null)
+              Text('Archivo: ${_selectedFile!.path.split('/').last}', style: TextStyle(color: Colors.grey[700])),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _posting ? null : _publish,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF5B9FED),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: _posting ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('Publicar'),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 100),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _pickFile() async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? picked = await picker.pickImage(source: ImageSource.gallery);
+      if (picked != null) {
+        setState(() => _selectedFile = File(picked.path));
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error seleccionando imagen: $e')));
+    }
+  }
+
+  // helper removed; uploadService will detect mime type.
+
+  Future<void> _publish() async {
+    final title = _titleController.text.trim();
+    final body = _contentController.text.trim();
+    if (title.isEmpty || body.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Título y contenido son obligatorios')));
+      return;
+    }
+
+    setState(() => _posting = true);
+    try {
+      final auth = Provider.of<AuthNotifier>(context, listen: false);
+      final token = auth.token;
+      if (token == null || token.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Token no disponible')));
+        setState(() => _posting = false);
+        return;
+      }
+      final categoryId = _categoryMap[_selectedCategory];
+      int? communityId;
+      if (_communityController.text.trim().isNotEmpty) {
+        communityId = int.tryParse(_communityController.text.trim());
+      }
+
+      final Map<String, dynamic> postObj = {
+        'title': title,
+        'authorId': null,
+        'body': body,
+        'categoryId': categoryId,
+        // 'reactions' omitted intentionally
+        'fileId': 0,
+        'communityId': communityId,
+      };
+
+      // Prepare upload file (compress if possible) and call UploadService
+      File? uploadFile;
+      if (_selectedFile != null && await _selectedFile!.exists()) {
+        try {
+          final compressed = await FlutterImageCompress.compressWithFile(
+            _selectedFile!.path,
+            quality: 70,
+          );
+          if (compressed != null && compressed.isNotEmpty) {
+            // write compressed bytes to temp file
+            final tmp = File('${Directory.systemTemp.path}/${DateTime.now().millisecondsSinceEpoch}_${_selectedFile!.path.split('/').last}');
+            await tmp.writeAsBytes(compressed);
+            uploadFile = tmp;
+          } else {
+            uploadFile = _selectedFile;
+          }
+        } catch (_) {
+          uploadFile = _selectedFile;
+        }
+      }
+
+      try {
+        // Antes de intentar subir, validar expiración local del token
+        // `auth` ya fue obtenido arriba en el método (_publish)
+        if (auth.isTokenExpired(leewaySeconds: 5)) {
+          final goLogin = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Sesión inválida'),
+              content: const Text('Tu sesión ha expirado o es inválida. ¿Deseas iniciar sesión ahora?'),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+                ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Iniciar sesión')),
+              ],
+            ),
+          );
+          if (goLogin == true) {
+            try {
+              await auth.signOut();
+            } catch (_) {}
+            if (mounted) Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginScreen()), (route) => false);
+            return;
+          }
+        }
+
+        final tokenToUse = auth.token ?? token;
+
+        final resp = await UploadService.uploadPost(tokenToUse, postObj, uploadFile);
+        if (resp.statusCode == 200 || resp.statusCode == 201) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Publicación creada'), backgroundColor: Color(0xFF5B9FED)));
+          _titleController.clear();
+          _contentController.clear();
+          _communityController.clear();
+          setState(() => _selectedFile = null);
+          if (mounted) Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const HomeScreen()), (route) => false);
+        } else if (resp.statusCode == 401) {
+          // Intentar recargar token desde almacenamiento y reintentar una vez
+          await auth.reloadToken();
+          final newToken = auth.token;
+          if (newToken != null && newToken.isNotEmpty && newToken != token) {
+            // reintentar con token recargado
+            try {
+              final retryResp = await UploadService.uploadPost(newToken, postObj, uploadFile);
+                if (retryResp.statusCode == 200 || retryResp.statusCode == 201) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Publicación creada'), backgroundColor: Color(0xFF5B9FED)));
+                _titleController.clear();
+                _contentController.clear();
+                _communityController.clear();
+                setState(() => _selectedFile = null);
+                if (mounted) Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const HomeScreen()), (route) => false);
+                return;
+              }
+            } catch (_) {}
+          }
+
+          // Si llegamos aquí, seguir con flujo de re-login
+          final goLogin = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Sesión expirada'),
+              content: const Text('Tu sesión ha expirado. ¿Quieres iniciar sesión de nuevo?'),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+                ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Iniciar sesión')),
+              ],
+            ),
+          );
+
+          if (goLogin == true) {
+            try {
+              await auth.signOut();
+            } catch (_) {}
+            if (mounted) Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginScreen()), (route) => false);
+          }
+        } else {
+          String msg = 'Error creando publicación: ${resp.statusCode}';
+          try {
+            final data = resp.data;
+            if (data is Map && data['message'] != null) msg = data['message'];
+          } catch (_) {}
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al subir: $e')));
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    } finally {
+      if (mounted) setState(() => _posting = false);
+    }
   }
 
   Widget _buildAttachmentOption({

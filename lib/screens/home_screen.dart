@@ -1,4 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'dart:typed_data';
+import 'package:http/http.dart' as http;
+import '../services/auth_notifier.dart';
+import '../services/post_service.dart';
+import '../models/post.dart';
 import 'explore_screen.dart';
 import 'create_screen.dart';
 import 'trends_screen.dart';
@@ -166,8 +172,114 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class HomeContentScreen extends StatelessWidget {
+class HomeContentScreen extends StatefulWidget {
   const HomeContentScreen({Key? key}) : super(key: key);
+
+  @override
+  State<HomeContentScreen> createState() => _HomeContentScreenState();
+}
+
+class _HomeContentScreenState extends State<HomeContentScreen> {
+  final PostService _postService = PostService();
+  List<Post> _posts = [];
+  bool _loading = true;
+  final Set<int> _liking = {}; // posts being liked (loading state per post)
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPosts();
+  }
+
+  Future<void> _loadPosts() async {
+    setState(() => _loading = true);
+    try {
+      final auth = Provider.of<AuthNotifier>(context, listen: false);
+      final token = auth.token;
+      final posts = await _postService.fetchPosts(token: token);
+      // Fetch authoritative like counts for all posts in parallel,
+      // then update the posts list so the UI shows counts from the likes API.
+      final futures = posts.map((p) async {
+        if (p.id == null) return p;
+        try {
+          final count = await _postService.getLikeCount(p.id!, token: token);
+          return p.copyWith(reactions: count);
+        } catch (_) {
+          // on failure, keep original reactions value
+          return p;
+        }
+      }).toList();
+
+      final updated = await Future.wait(futures);
+      setState(() {
+        _posts = updated;
+      });
+    } catch (e) {
+      // ignore and show empty list / snack
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _onLike(Post post) async {
+    if (post.id == null) return;
+    final postId = post.id!;
+    if (_liking.contains(postId)) return;
+    // optimistic update: increment locally immediately to avoid flicker
+    final prev = post.reactions ?? 0;
+    setState(() {
+      _liking.add(postId);
+      final idx = _posts.indexWhere((p) => p.id == postId);
+      if (idx != -1) _posts[idx] = _posts[idx].copyWith(reactions: prev + 1);
+    });
+    // DEBUG: log optimistic update
+    try {
+      // ignore: avoid_print
+      print('LIKE_OPTIMISTIC post:$postId prev:$prev optimistic:${prev + 1}');
+    } catch (_) {}
+
+    try {
+      final auth = Provider.of<AuthNotifier>(context, listen: false);
+      final token = auth.token;
+      final updated = await _postService.likePost(postId: postId, token: token);
+      if (updated != null) {
+        // server returned authoritative count — avoid unrealistic drops/jumps:
+        final safe = updated < (prev + 1) ? (prev + 1) : updated;
+        try {
+          // ignore: avoid_print
+          print('LIKE_SERVER post:$postId returned:$updated safe:$safe');
+        } catch (_) {}
+        if (mounted) setState(() {
+          final idx = _posts.indexWhere((p) => p.id == postId);
+          if (idx != -1) _posts[idx] = _posts[idx].copyWith(reactions: safe);
+        });
+      } else {
+        // server didn't return count: try to fetch authoritative count now
+        try {
+          final count = await _postService.getLikeCount(postId, token: token);
+          final safe = count < (prev + 1) ? (prev + 1) : count;
+          try {
+            // ignore: avoid_print
+            print('LIKE_FETCH post:$postId fetched:$count safe:$safe');
+          } catch (_) {}
+          if (mounted) setState(() {
+            final idx = _posts.indexWhere((p) => p.id == postId);
+            if (idx != -1) _posts[idx] = _posts[idx].copyWith(reactions: safe);
+          });
+        } catch (_) {
+          // couldn't fetch fresh count, keep optimistic value
+        }
+      }
+    } catch (e) {
+      // network error -> revert optimistic
+      if (mounted) setState(() {
+        final idx = _posts.indexWhere((p) => p.id == postId);
+        if (idx != -1) _posts[idx] = _posts[idx].copyWith(reactions: prev);
+      });
+    } finally {
+      if (mounted) setState(() => _liking.remove(postId));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -266,53 +378,25 @@ class HomeContentScreen extends StatelessWidget {
 
             // Feed de posts
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                children: [
-                  _buildPostCard(
-                    name: 'Dr. María González',
-                    role: 'Ingeniera de Minas',
-                    time: 'Hace 2 horas',
-                    category: 'Innovación',
-                    categoryColor: const Color(0xFF5B9FED),
-                    title: 'Nuevas técnicas de extracción sostenible en minas de cobre',
-                    content:
-                        'Un análisis profundo sobre las últimas innovaciones en minería sostenible que están revolucionando la industria...',
-                    likes: 234,
-                    comments: 45,
-                    avatarColor: Colors.pink,
-                  ),
-                  const SizedBox(height: 16),
-                  _buildPostCard(
-                    name: 'Ing. Carlos Mendoza',
-                    role: 'Geólogo Senior',
-                    time: 'Hace 2 horas',
-                    category: 'Geología',
-                    categoryColor: const Color(0xFF4CAF50),
-                    title: 'Análisis geológico: Nuevos yacimientos en la región andina',
-                    content:
-                        'Descubrimientos recientes revelan importantes depósitos minerales que podrían cambiar el panorama de la minen...',
-                    likes: 234,
-                    comments: 45,
-                    avatarColor: Colors.orange,
-                  ),
-                  const SizedBox(height: 16),
-                  _buildPostCard(
-                    name: 'Dra. Ana Martínez',
-                    role: 'Especialista en Seguridad',
-                    time: 'Hace 5 horas',
-                    category: 'Seguridad',
-                    categoryColor: const Color(0xFFFF9800),
-                    title: 'Protocolos de seguridad actualizados para operaciones subterráneas',
-                    content:
-                        'Nuevas directrices internacionales buscan reducir riesgos en minas subterráneas mediante tecnología IoT...',
-                    likes: 189,
-                    comments: 32,
-                    avatarColor: Colors.purple,
-                  ),
-                  const SizedBox(height: 80),
-                ],
-              ),
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : RefreshIndicator(
+                      onRefresh: _loadPosts,
+                      child: ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: _posts.length + 1,
+                        itemBuilder: (context, index) {
+                          if (index == _posts.length) return const SizedBox(height: 80);
+                          final post = _posts[index];
+                          return Column(
+                            children: [
+                              _buildPostCardFromPost(post),
+                              const SizedBox(height: 16),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
             ),
           ],
         ),
@@ -494,5 +578,175 @@ class HomeContentScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Widget _buildPostCardFromPost(Post post) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header del post
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: Colors.grey[200],
+                  child: const Icon(Icons.person, color: Colors.black54, size: 28),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        post.title,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Autor: ${post.authorId ?? '-'} • ${post.communityId != null ? 'Comunidad ${post.communityId}' : ''}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  post.reactions != null ? '${post.reactions} ❤' : '',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[500],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Body
+            Text(
+              post.body,
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[800],
+                height: 1.4,
+              ),
+            ),
+            if (post.fileUrl != null) ...[
+              const SizedBox(height: 12),
+              FutureBuilder<Uint8List?>(
+                future: _fetchFileBytes(post.fileUrl!),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return Container(
+                      height: 160,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        color: Colors.grey[100],
+                      ),
+                      child: const Center(child: CircularProgressIndicator()),
+                    );
+                  }
+                  final bytes = snapshot.data;
+                  if (bytes != null) {
+                    return ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.memory(
+                        bytes,
+                        height: 160,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                      ),
+                    );
+                  }
+                  // Fallback to network image without auth header
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.network(
+                      post.fileUrl!,
+                      height: 160,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stack) => Container(
+                        height: 160,
+                        width: double.infinity,
+                        color: Colors.grey[100],
+                        child: Center(
+                          child: Text(
+                            'No se pudo cargar el archivo',
+                            style: TextStyle(color: Colors.grey[600]),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                IconButton(
+                  onPressed: _liking.contains(post.id) ? null : () => _onLike(post),
+                  icon: Icon(Icons.thumb_up_alt_outlined, color: Colors.grey[500], size: 18),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+                const SizedBox(width: 6),
+                if (_liking.contains(post.id))
+                  SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation(Colors.grey[600])),
+                  ),
+                const SizedBox(width: 6),
+                Text('${post.reactions ?? 0}'),
+                const SizedBox(width: 16),
+                Icon(Icons.comment_outlined, color: Colors.grey[500], size: 18),
+                const SizedBox(width: 8),
+                const Text('Comentar'),
+                const Spacer(),
+                Icon(Icons.more_horiz, color: Colors.grey[400]),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<Uint8List?> _fetchFileBytes(String url) async {
+    try {
+      final auth = Provider.of<AuthNotifier>(context, listen: false);
+      final token = auth.token;
+      if (token != null && token.isNotEmpty) {
+        final resp = await http.get(Uri.parse(url), headers: {'Authorization': 'Bearer $token'});
+        if (resp.statusCode == 200) return resp.bodyBytes;
+        return null;
+      } else {
+        // No token: let Image.network handle it (return null to indicate fallback)
+        return null;
+      }
+    } catch (_) {
+      return null;
+    }
   }
 }

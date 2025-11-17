@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../services/auth_notifier.dart';
+import 'login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -268,9 +271,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         child: const Text('Cancelar'),
                       ),
                       ElevatedButton(
-                        onPressed: () {
+                        onPressed: () async {
                           Navigator.pop(context);
-                          // Aquí iría la lógica de cerrar sesión
+                          final auth = Provider.of<AuthNotifier>(context, listen: false);
+                          await auth.signOut();
+                          if (mounted) {
+                            Navigator.of(context).pushAndRemoveUntil(
+                              MaterialPageRoute(builder: (_) => const LoginScreen()),
+                              (route) => false,
+                            );
+                          }
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.red,

@@ -35,6 +35,7 @@ class _RegisterScreen1State extends State<RegisterScreen1> {
           builder: (context) => RegisterScreen2(
             name: _nameController.text,
             email: _emailController.text,
+            password: _passwordController.text,
           ),
         ),
       );

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../services/auth_notifier.dart';
 import 'register_screen_1.dart';
+import 'home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -14,6 +17,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _rememberMe = false;
   bool _obscurePassword = true;
+  
 
   @override
   void dispose() {
@@ -223,17 +227,46 @@ class _LoginScreenState extends State<LoginScreen> {
                           width: double.infinity,
                           height: 52,
                           child: ElevatedButton(
-                            onPressed: () {
-                              if (_formKey.currentState!.validate()) {
-                                // Acción de inicio de sesión
+                            onPressed: () async {
+                              if (!_formKey.currentState!.validate()) return;
+                              final auth = Provider.of<AuthNotifier>(context, listen: false);
+                              try {
+                                final ok = await auth.signIn(
+                                  username: _emailController.text.trim(),
+                                  password: _passwordController.text,
+                                );
+                                if (ok && mounted) {
+                                  Navigator.of(context).pushAndRemoveUntil(
+                                    MaterialPageRoute(builder: (_) => const HomeScreen()),
+                                    (route) => false,
+                                  );
+                                }
+                              } catch (e) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Error: ${e.toString()}')),
+                                );
                               }
                             },
-                            child: const Text(
-                              'Iniciar sesión',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
+                            child: Consumer<AuthNotifier>(
+                              builder: (context, auth, child) {
+                                if (auth.loading) {
+                                  return const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    ),
+                                  );
+                                }
+                                return const Text(
+                                  'Iniciar sesión',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                );
+                              },
                             ),
                           ),
                         ),

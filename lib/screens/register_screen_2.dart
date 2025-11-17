@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../services/auth_notifier.dart';
+import 'home_screen.dart';
 
 class RegisterScreen2 extends StatefulWidget {
   final String name;
   final String email;
+  final String password;
 
   const RegisterScreen2({
     Key? key,
     required this.name,
     required this.email,
+    required this.password,
   }) : super(key: key);
 
   @override
@@ -19,6 +24,7 @@ class _RegisterScreen2State extends State<RegisterScreen2> {
   String? _selectedRole;
   final _companyController = TextEditingController();
   bool _acceptTerms = false;
+  bool _isLoading = false;
 
   final List<Map<String, dynamic>> _roles = [
     {'value': 'ingeniero', 'label': 'Ingeniero de Minas', 'icon': Icons.engineering},
@@ -35,31 +41,32 @@ class _RegisterScreen2State extends State<RegisterScreen2> {
     super.dispose();
   }
 
-  void _completeRegistration() {
+  Future<void> _completeRegistration() async {
     if (_formKey.currentState!.validate() && _acceptTerms && _selectedRole != null) {
-      // Aquí iría la lógica para completar el registro
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
-            children: [
-              Icon(Icons.check_circle, color: Color(0xFF5B9FED), size: 32),
-              SizedBox(width: 12),
-              Text('¡Registro exitoso!'),
-            ],
-          ),
-          content: const Text('Tu cuenta ha sido creada exitosamente.'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).popUntil((route) => route.isFirst);
-              },
-              child: const Text('Continuar'),
-            ),
-          ],
-        ),
-      );
+      // Llamar al servicio de autenticación para crear cuenta y luego iniciar sesión
+      setState(() {
+        _isLoading = true;
+      });
+      final auth = Provider.of<AuthNotifier>(context, listen: false);
+      try {
+        final ok = await auth.signUp(username: widget.email, password: widget.password);
+        if (ok && mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => const HomeScreen()),
+            (route) => false,
+          );
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error registrando: ${e.toString()}')),
+        );
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      }
     } else if (_selectedRole == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -373,14 +380,23 @@ class _RegisterScreen2State extends State<RegisterScreen2> {
                                 width: double.infinity,
                                 height: 52,
                                 child: ElevatedButton(
-                                  onPressed: _completeRegistration,
-                                  child: const Text(
-                                    'Crear cuenta',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
+                                  onPressed: _isLoading ? null : _completeRegistration,
+                                  child: _isLoading
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                          ),
+                                        )
+                                      : const Text(
+                                          'Crear cuenta',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
                                 ),
                               ),
                               const SizedBox(height: 32),

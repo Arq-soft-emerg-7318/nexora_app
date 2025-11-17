@@ -45,5 +45,11 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>La app necesita acceder a tu biblioteca de fotos para adjuntar imágenes a las publicaciones.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>La app necesita acceder a la cámara para tomar fotos y adjuntarlas a las publicaciones.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>La app necesita permiso para guardar fotos en tu biblioteca si decides guardar imágenes desde la aplicación.</string>
 </dict>
 </plist>
