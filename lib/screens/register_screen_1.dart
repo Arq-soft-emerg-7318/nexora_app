@@ -74,7 +74,7 @@ class _RegisterScreen1State extends State<RegisterScreen1> {
                     ),
                     const SizedBox(width: 12),
                     const Text(
-                      '← Volver al inicio de sesión',
+                      'Volver al inicio de sesión',
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.black87,

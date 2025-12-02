@@ -2,9 +2,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/upload_service.dart';
+import 'ai_preview_screen.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 
 import '../services/auth_notifier.dart';
@@ -25,14 +27,14 @@ class _CreateScreenState extends State<CreateScreen> {
 
   // category name -> id mapping (sample ids). Ajusta más tarde con endpoint real.
   final Map<String, int> _categoryMap = {
-    'Pontones': 1,
+    'Industrial': 1,
     'Innovación': 2,
     'Seguridad': 3,
     'Geología': 4,
     'Sostenibilidad': 5,
   };
 
-  String _selectedCategory = 'Pontones';
+  String _selectedCategory = 'Industrial';
   File? _selectedFile;
   bool _posting = false;
 
@@ -317,9 +319,48 @@ class _CreateScreenState extends State<CreateScreen> {
               ],
             ),
             const SizedBox(height: 18),
-            if (_selectedFile != null)
-              Text('Archivo: ${_selectedFile!.path.split('/').last}', style: TextStyle(color: Colors.grey[700])),
-            const SizedBox(height: 18),
+            if (_selectedFile != null) ...[
+              _isImageFile(_selectedFile!)
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.file(_selectedFile!, height: 160, width: double.infinity, fit: BoxFit.cover),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            TextButton.icon(
+                              onPressed: () {
+                                showDialog(
+                                  context: context,
+                                  builder: (_) => Dialog(
+                                    child: GestureDetector(
+                                      onTap: () => Navigator.pop(context),
+                                      child: InteractiveViewer(child: Image.file(_selectedFile!)),
+                                    ),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.open_in_full, size: 18),
+                              label: const Text('Ver'),
+                            ),
+                            const SizedBox(width: 8),
+                            TextButton.icon(
+                              onPressed: () {
+                                setState(() => _selectedFile = null);
+                              },
+                              icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                              label: const Text('Quitar', style: TextStyle(color: Colors.red)),
+                            ),
+                          ],
+                        ),
+                      ],
+                    )
+                  : Text('Archivo: ${_selectedFile!.path.split('/').last}', style: TextStyle(color: Colors.grey[700])),
+              const SizedBox(height: 18),
+            ],
             Row(
               children: [
                 Expanded(
@@ -537,83 +578,271 @@ class _CreateScreenState extends State<CreateScreen> {
   }
 
   void _showAIAssistantDialog() {
+    final promptController = TextEditingController();
+    bool isGenerating = false;
+    String? genTitle;
+    String? genBody;
+    String? genCategory;
+    int? genCommunityId;
+    String? genImageBase64;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: Row(
-          children: [
-            Icon(
-              Icons.auto_awesome,
-              color: const Color(0xFF5B9FED),
-              size: 28,
-            ),
-            const SizedBox(width: 12),
-            const Text('Asistente IA'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'El asistente de IA puede ayudarte a:',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 15,
+      builder: (context) => StatefulBuilder(builder: (context, setDlgState) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: Row(children: [
+            Icon(Icons.auto_awesome, color: const Color(0xFF5B9FED), size: 26),
+            const SizedBox(width: 10),
+            const Text('Generador IA'),
+          ]),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(
+                controller: promptController,
+                maxLines: 3,
+                decoration: const InputDecoration(hintText: 'Describe lo que quieres que genere...'),
               ),
+              const SizedBox(height: 12),
+              if (isGenerating) const CircularProgressIndicator(),
+              if (genTitle != null) ...[
+                Align(alignment: Alignment.centerLeft, child: const Text('Título sugerido', style: TextStyle(fontWeight: FontWeight.bold))),
+                const SizedBox(height: 6),
+                Row(children: [
+                  Expanded(child: Text(_truncateWords(genTitle!, 5), style: const TextStyle(fontWeight: FontWeight.w600))),
+                  TextButton(
+                    onPressed: () async {
+                      final res = await Navigator.of(context).push(MaterialPageRoute(builder: (_) => AiPreviewScreen(
+                        title: genTitle != null ? _sanitizeText(genTitle!) : null,
+                        body: genBody != null ? _sanitizeText(genBody!) : null,
+                        imageBase64: genImageBase64,
+                      )));
+                        if (res is Map) {
+                        // apply returned values
+                        setState(() {
+                          if (res['title'] != null) _titleController.text = _sanitizeAndTruncateTitle((res['title'] as String), 5);
+                          if (res['body'] != null) _contentController.text = _sanitizeText((res['body'] as String));
+                          if (res['image'] != null) {
+                            try {
+                              final bytes = base64Decode(res['image'] as String);
+                              final tmpDir = Directory.systemTemp.createTempSync('nexora_ai_');
+                              final f = File('${tmpDir.path}/ai_generated_${DateTime.now().millisecondsSinceEpoch}.png');
+                              f.writeAsBytesSync(bytes);
+                              _selectedFile = f;
+                            } catch (_) {}
+                          }
+                        });
+                      }
+                    },
+                    child: const Text('Ver más'),
+                  ),
+                ]),
+                const SizedBox(height: 8),
+              ],
+              if (genBody != null) ...[
+                Align(alignment: Alignment.centerLeft, child: const Text('Texto generado', style: TextStyle(fontWeight: FontWeight.bold))),
+                const SizedBox(height: 6),
+                Text(_shortenText(_sanitizeText(genBody!), 60)),
+                const SizedBox(height: 8),
+              ],
+              if (genImageBase64 != null) ...[
+                Align(alignment: Alignment.centerLeft, child: const Text('Imagen generada', style: TextStyle(fontWeight: FontWeight.bold))),
+                const SizedBox(height: 6),
+                Image.memory(base64Decode(genImageBase64!), height: 160, fit: BoxFit.cover),
+                const SizedBox(height: 8),
+              ],
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
+            TextButton(
+              onPressed: isGenerating
+                  ? null
+                  : () async {
+                      final prompt = promptController.text.trim();
+                      if (prompt.isEmpty) return;
+                      setDlgState(() => isGenerating = true);
+                      try {
+                        final data = await _generateFromEndpoint(prompt);
+                        // Expect fields: title, category, communityId (or community), text/body, image (base64)
+                        genTitle = data['title'] as String? ?? data['text'] as String?;
+                        genBody = (data['body'] as String?) ?? (data['text'] as String?) ?? data['message'] as String?;
+                        // category may be name or id
+                        final cat = data['category'];
+                        if (cat != null) genCategory = cat is String ? cat : cat.toString();
+                        final community = data['communityId'] ?? data['community'] ?? data['community_id'];
+                        if (community != null) genCommunityId = (community is int) ? community : int.tryParse(community.toString());
+                        genImageBase64 = data['image'] as String?;
+
+                        setDlgState(() => isGenerating = false);
+                        setState(() {
+                          if (genTitle != null) _titleController.text = _sanitizeAndTruncateTitle(genTitle!, 5);
+                          if (genBody != null) _contentController.text = _sanitizeText(genBody!);
+                          if (genCategory != null) {
+                            // try match by name, otherwise if numeric try map by id
+                            if (_categoryMap.containsKey(genCategory)) {
+                              _selectedCategory = genCategory!;
+                            } else {
+                              final maybeId = int.tryParse(genCategory!);
+                              if (maybeId != null) {
+                                final entry = _categoryMap.entries.firstWhere((e) => e.value == maybeId, orElse: () => MapEntry(_selectedCategory, _categoryMap[_selectedCategory]!));
+                                _selectedCategory = entry.key;
+                              }
+                            }
+                          }
+                          if (genCommunityId != null) _communityController.text = genCommunityId.toString();
+                        });
+
+                        // if image present, write temp file and set _selectedFile so it is uploaded
+                        if (genImageBase64 != null) {
+                          try {
+                            final bytes = base64Decode(genImageBase64!);
+                            final tmpDir = await Directory.systemTemp.createTemp('nexora_ai_');
+                            final f = File('${tmpDir.path}/ai_generated_${DateTime.now().millisecondsSinceEpoch}.png');
+                            await f.writeAsBytes(bytes);
+                            setState(() => _selectedFile = f);
+                          } catch (e) {
+                            // ignore file write errors but inform
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Imagen generada, pero no se pudo guardar: $e')));
+                          }
+                        }
+                      } catch (e) {
+                        setDlgState(() => isGenerating = false);
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error generando: $e')));
+                      }
+                    },
+              child: const Text('Generar'),
             ),
-            const SizedBox(height: 16),
-            _buildAIFeature('✨ Mejorar la redacción de tu contenido'),
-            _buildAIFeature('📝 Generar títulos atractivos'),
-            _buildAIFeature('🎯 Sugerir hashtags relevantes'),
-            _buildAIFeature('🔍 Optimizar para búsquedas'),
-            _buildAIFeature('💡 Proponer ideas de contenido'),
+            ElevatedButton(
+              onPressed: () async {
+                // If nothing generated yet, generate first
+                if (!isGenerating && genTitle == null && genBody == null && genImageBase64 == null) {
+                  final prompt = promptController.text.trim();
+                  if (prompt.isEmpty) return;
+                  setDlgState(() => isGenerating = true);
+                  try {
+                    final data = await _generateFromEndpoint(prompt);
+                    genTitle = data['title'] as String? ?? data['text'] as String?;
+                    genBody = (data['body'] as String?) ?? (data['text'] as String?) ?? data['message'] as String?;
+                    final cat = data['category'];
+                    if (cat != null) genCategory = cat is String ? cat : cat.toString();
+                    final community = data['communityId'] ?? data['community'] ?? data['community_id'];
+                    if (community != null) genCommunityId = (community is int) ? community : int.tryParse(community.toString());
+                    genImageBase64 = data['image'] as String?;
+
+                    setDlgState(() => isGenerating = false);
+                      setState(() {
+                        if (genTitle != null) _titleController.text = _truncateWords(genTitle!, 5);
+                        if (genBody != null) _contentController.text = _sanitizeText(genBody!);
+                        if (genCategory != null) {
+                        if (_categoryMap.containsKey(genCategory)) {
+                          _selectedCategory = genCategory!;
+                        } else {
+                          final maybeId = int.tryParse(genCategory!);
+                          if (maybeId != null) {
+                            final entry = _categoryMap.entries.firstWhere((e) => e.value == maybeId, orElse: () => MapEntry(_selectedCategory, _categoryMap[_selectedCategory]!));
+                            _selectedCategory = entry.key;
+                          }
+                        }
+                      }
+                      if (genCommunityId != null) _communityController.text = genCommunityId.toString();
+                    });
+
+                    if (genImageBase64 != null) {
+                      try {
+                        final bytes = base64Decode(genImageBase64!);
+                        final tmpDir = await Directory.systemTemp.createTemp('nexora_ai_');
+                        final f = File('${tmpDir.path}/ai_generated_${DateTime.now().millisecondsSinceEpoch}.png');
+                        await f.writeAsBytes(bytes);
+                        setState(() => _selectedFile = f);
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Imagen generada, pero no se pudo guardar: $e')));
+                      }
+                    }
+                  } catch (e) {
+                    setDlgState(() => isGenerating = false);
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error generando: $e')));
+                    return;
+                  }
+                }
+
+                // Close after applying
+                Navigator.pop(context);
+              },
+              child: const Text('Aplicar en formulario'),
+            ),
           ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cerrar'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Generando sugerencias con IA...'),
-                  backgroundColor: Color(0xFF5B9FED),
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF5B9FED),
-            ),
-            child: const Text('Usar IA'),
-          ),
-        ],
-      ),
+        );
+      }),
     );
   }
 
-  Widget _buildAIFeature(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(fontSize: 14, height: 1.4),
-            ),
-          ),
-        ],
-      ),
-    );
+  Future<Map<String, dynamic>> _generateFromEndpoint(String prompt) async {
+    final url = Uri.parse('http://192.168.18.157:3000/generate');
+    final resp = await http.post(url, headers: {'Content-Type': 'application/json'}, body: jsonEncode({'prompt': _shortenPrompt(prompt)}));
+    if (resp.statusCode != 200) throw Exception('IA endpoint error ${resp.statusCode}: ${resp.body}');
+    final data = jsonDecode(resp.body);
+    if (data is Map<String, dynamic>) return data;
+    return {'text': data.toString()};
   }
+
+  String _truncateWords(String s, int maxWords) {
+    // Cortar el título en la primera nueva línea y limitar por número de palabras
+    final firstLine = s.split('\n').first.trim();
+    final parts = firstLine.split(RegExp(r'\s+'));
+    if (parts.isEmpty) return '';
+    if (parts.length <= maxWords) return parts.join(' ');
+    return parts.sublist(0, maxWords).join(' ');
+  }
+
+  String _shortenText(String s, int maxWords) {
+    final parts = s.split(RegExp(r'\s+'));
+    if (parts.length <= maxWords) return s;
+    return parts.sublist(0, maxWords).join(' ') + '...';
+  }
+
+  String _shortenPrompt(String prompt) {
+    // Append guidance so the IA returns concise content suitable for preview and short posts
+    return prompt + '\n\nPor favor responde con un título (máx 5 palabras) y un texto breve (máx 60 palabras). Incluye una imagen en base64 en la clave "image" cuando corresponda.';
+  }
+
+  String _sanitizeText(String s) {
+    // Remove markdown emphasis characters and any inline/base64 image data
+    String clean = s.replaceAll('**', '').replaceAll('*', '').replaceAll('`', '').trim();
+    // Remove lines that look like image: <base64...> or data:image/... blobs
+    clean = _removeImageData(clean);
+    return clean;
+  }
+
+  String _removeImageData(String s) {
+    // Remove any lines that start with 'image:' or 'imagen:' (case-insensitive),
+    // or lines that contain 'data:image' or long base64 fragments.
+    final lines = s.split(RegExp(r'\r?\n'));
+    final filtered = <String>[];
+    final base64Long = RegExp(r'^[A-Za-z0-9+/=\\s]{100,}\$');
+    for (var line in lines) {
+      final t = line.trim();
+      if (t.isEmpty) continue;
+      final low = t.toLowerCase();
+      if (low.startsWith('image:') || low.startsWith('imagen:')) continue;
+      if (low.contains('data:image')) continue;
+      if (base64Long.hasMatch(t)) continue;
+      filtered.add(t);
+    }
+    return filtered.join('\n').trim();
+  }
+
+  String _sanitizeAndTruncateTitle(String s, int maxWords) {
+    final clean = _sanitizeText(s);
+    return _truncateWords(clean, maxWords);
+  }
+
+  bool _isImageFile(File f) {
+    final name = f.path.toLowerCase();
+    return name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.webp');
+  }
+
+  
 
   void _showLinkDialog() {
     final linkController = TextEditingController();

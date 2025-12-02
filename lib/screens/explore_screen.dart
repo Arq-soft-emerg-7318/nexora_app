@@ -1,4 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import '../services/post_service.dart';
+import '../models/post.dart';
+import 'post_detail_screen.dart';
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({Key? key}) : super(key: key);
@@ -13,45 +17,100 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
   final List<String> _filters = [
     'Todos',
+    'Industrial',
     'Innovación',
     'Seguridad',
     'Geología',
     'Sostenibilidad'
   ];
 
-  final List<String> _recentSearches = [
-    'Extracción sostenible',
-    'Yacimientos 2025',
-    'Seguridad minera',
-  ];
+  // Pagination / posts state
+  final PostService _postService = PostService();
+  final List<Post> _posts = [];
+  int _page = 0;
+  final int _size = 10;
+  bool _loading = false;
+  bool _hasMore = true;
+  final ScrollController _scrollController = ScrollController();
 
-  final List<Map<String, dynamic>> _popularTopics = [
-    {
-      'title': 'Minería verde y sostenible',
-      'resources': '245 recursos',
-      'icon': Icons.description_outlined,
-    },
-    {
-      'title': 'Nuevas tecnologías de extracción',
-      'resources': '189 recursos',
-      'icon': Icons.content_copy_outlined,
-    },
-    {
-      'title': 'Regulaciones 2025',
-      'resources': '156 recursos',
-      'icon': Icons.article_outlined,
-    },
-    {
-      'title': 'Casos de estudio internacionales',
-      'resources': '134 recursos',
-      'icon': Icons.description_outlined,
-    },
-  ];
+  // category id -> name map (if API returns ids)
+  final Map<int, String> _categoryById = {
+    1: 'Industrial',
+    2: 'Innovación',
+    3: 'Seguridad',
+    4: 'Geología',
+    5: 'Sostenibilidad',
+  };
+
+  // name -> id map to send categoryId to backend when possible
+  final Map<String, int> _categoryNameToId = {
+    'Industrial': 1,
+    'Innovación': 2,
+    'Seguridad': 3,
+    'Geología': 4,
+    'Sostenibilidad': 5,
+  };
+
+  Timer? _searchDebounce;
+
+  // removed recent search samples and popular topics — posts come from backend
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(() {
+      // Debounce user typing to avoid many requests
+      if (_searchDebounce?.isActive ?? false) _searchDebounce!.cancel();
+      _searchDebounce = Timer(const Duration(milliseconds: 400), () {
+        _page = 0;
+        _hasMore = true;
+        _posts.clear();
+        _loadPosts();
+      });
+    });
+    _scrollController.addListener(() {
+      if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+        if (!_loading && _hasMore) _loadPosts();
+      }
+    });
+    _loadPosts();
+  }
+
+  Future<void> _loadPosts() async {
+    if (!_hasMore) return;
+    setState(() => _loading = true);
+    try {
+      final title = _searchController.text.trim().isEmpty ? null : _searchController.text.trim();
+      final category = _selectedFilter == 'Todos' ? null : _selectedFilter;
+      final int? categoryId = _categoryNameToId[_selectedFilter];
+      final fetched = await _postService.fetchPostsPaged(title: title, category: category, categoryId: categoryId, page: _page, size: _size);
+      // If backend does not filter by category name, apply client-side filter by category
+      List<Post> filteredFetched = fetched;
+      if (category != null && category.isNotEmpty) {
+        filteredFetched = fetched.where((p) {
+          final name = p.categoryId != null ? (_categoryById[p.categoryId!] ?? '') : '';
+          return name.toLowerCase() == category.toLowerCase();
+        }).toList();
+      }
+      setState(() {
+        if (_page == 0) _posts.clear();
+        _posts.addAll(filteredFetched);
+        _hasMore = fetched.length == _size; // still decide hasMore based on raw fetched size
+        if (_hasMore) _page += 1;
+      });
+    } catch (e) {
+      // ignore fetch errors for now
+    } finally {
+      setState(() => _loading = false);
+    }
   }
 
   @override
@@ -141,7 +200,11 @@ class _ExploreScreenState extends State<ExploreScreen> {
                       onSelected: (selected) {
                         setState(() {
                           _selectedFilter = filter;
+                          _page = 0;
+                          _hasMore = true;
+                          _posts.clear();
                         });
+                        _loadPosts();
                       },
                       backgroundColor: Colors.white,
                       selectedColor: const Color(0xFF5B9FED),
@@ -175,9 +238,9 @@ class _ExploreScreenState extends State<ExploreScreen> {
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 children: [
-                  // Búsquedas recientes
+                  // Publicaciones recientes (desde backend)
                   const Text(
-                    'Búsquedas recientes',
+                    'Publicaciones recientes',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -185,94 +248,54 @@ class _ExploreScreenState extends State<ExploreScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  ..._recentSearches.map(
-                        (search) => Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: ListTile(
-                        leading: Icon(
-                          Icons.search,
-                          color: Colors.grey[400],
-                          size: 20,
-                        ),
-                        title: Text(
-                          search,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        trailing: Icon(
-                          Icons.arrow_forward,
-                          size: 18,
-                          color: Colors.grey[400],
-                        ),
-                        onTap: () {},
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
 
-                  // Temas populares
-                  const Text(
-                    'Temas populares',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
                   const SizedBox(height: 12),
-                  GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      childAspectRatio: 1.1,
-                    ),
-                    itemCount: _popularTopics.length,
-                    itemBuilder: (context, index) {
-                      final topic = _popularTopics[index];
-                      return _buildTopicCard(
-                        icon: topic['icon'],
-                        title: topic['title'],
-                        resources: topic['resources'],
-                      );
+                  // Posts from backend
+                  RefreshIndicator(
+                    onRefresh: () async {
+                      _page = 0;
+                      _hasMore = true;
+                      _posts.clear();
+                      await _loadPosts();
                     },
-                  ),
-                  const SizedBox(height: 32),
-
-                  // Documentos recientes
-                  const Text(
-                    'Documentos recientes',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
+                    child: Column(
+                      children: [
+                        if (_posts.isEmpty && _loading)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 24),
+                            child: CircularProgressIndicator(),
+                          )
+                        else if (_posts.isEmpty)
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.grey[200]!),
+                            ),
+                            child: const Center(
+                              child: Text('No se encontraron resultados', style: TextStyle(color: Colors.grey)),
+                            ),
+                          )
+                        else ..._posts.map((post) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8.0),
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.of(context).push(MaterialPageRoute(builder: (_) => PostDetailScreen(post: post)));
+                            },
+                            child: _buildDocumentCard(
+                              title: post.title,
+                              category: post.categoryId != null ? (_categoryById[post.categoryId!] ?? 'General') : 'General',
+                              date: 'Reciente',
+                            ),
+                          ),
+                        )),
+                        const SizedBox(height: 8),
+                        if (_loading) const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: CircularProgressIndicator()),
+                        if (!_loading && _hasMore)
+                          TextButton(onPressed: _loadPosts, child: const Text('Cargar más')),
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildDocumentCard(
-                    title: 'Informe de Sostenibilidad 2024',
-                    category: 'Sostenibilidad',
-                    date: 'Hace 2 días',
-                  ),
-                  const SizedBox(height: 8),
-                  _buildDocumentCard(
-                    title: 'Nuevas regulaciones mineras',
-                    category: 'Normativa',
-                    date: 'Hace 5 días',
-                  ),
-                  const SizedBox(height: 8),
-                  _buildDocumentCard(
-                    title: 'Tecnologías emergentes en minería',
-                    category: 'Innovación',
-                    date: 'Hace 1 semana',
                   ),
                   const SizedBox(height: 100),
                 ],
@@ -284,61 +307,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
     );
   }
 
-  Widget _buildTopicCard({
-    required IconData icon,
-    required String title,
-    required String resources,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE8F4FD),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFF5B9FED).withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              icon,
-              color: const Color(0xFF5B9FED),
-              size: 24,
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                  height: 1.3,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                resources,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+  // popular topics removed
 
   Widget _buildDocumentCard({
     required String title,

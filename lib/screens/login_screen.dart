@@ -206,18 +206,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ],
                             ),
-                            TextButton(
-                              onPressed: () {
-                                // Acción para recuperar contraseña
-                              },
-                              child: const Text(
-                                '¿Olvidaste tu contraseña?',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Color(0xFF5B9FED),
-                                ),
-                              ),
-                            ),
+
                           ],
                         ),
                         const SizedBox(height: 24),
@@ -271,64 +260,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         const SizedBox(height: 24),
-                        
-                        // O continua con
-                        Row(
-                          children: [
-                            Expanded(child: Divider(color: Colors.grey[300])),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              child: Text(
-                                'o continúa con',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
-                            ),
-                            Expanded(child: Divider(color: Colors.grey[300])),
-                          ],
-                        ),
-                        const SizedBox(height: 24),
-                        
-                        // Botones de redes sociales
-                        Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton.icon(
-                                onPressed: () {},
-                                icon: const Icon(Icons.g_mobiledata, size: 24),
-                                label: const Text('Google'),
-                                style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(vertical: 14),
-                                  side: BorderSide(color: Colors.grey[300]!),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  foregroundColor: Colors.black87,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: OutlinedButton.icon(
-                                onPressed: () {},
-                                icon: const Icon(Icons.apple, size: 24),
-                                label: const Text('Apple'),
-                                style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(vertical: 14),
-                                  side: BorderSide(color: Colors.grey[300]!),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  foregroundColor: Colors.black87,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 24),
-                        
+                      
                         // Registrarse
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -379,22 +311,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   color: Colors.grey[600],
                                   height: 1.5,
                                 ),
-                                children: const [
-                                  TextSpan(text: 'Al continuar, aceptar nuestros '),
-                                  TextSpan(
-                                    text: 'Términos de Servicio',
-                                    style: TextStyle(
-                                      color: Color(0xFF5B9FED),
-                                    ),
-                                  ),
-                                  TextSpan(text: ' y '),
-                                  TextSpan(
-                                    text: 'Política de Privacidad',
-                                    style: TextStyle(
-                                      color: Color(0xFF5B9FED),
-                                    ),
-                                  ),
-                                ],
+
                               ),
                             ),
                           ),

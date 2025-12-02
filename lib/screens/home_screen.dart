@@ -331,49 +331,6 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
 
             ),
 
-            // Resumen del día
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF5B9FED), Color(0xFF7BB8F5)],
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF5B9FED).withOpacity(0.3),
-                      blurRadius: 15,
-                      offset: const Offset(0, 5),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Resumen del día',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '5 nuevos artículos sobre sostenibilidad, 3 actualizaciones de seguridad y 12 discusiones activas en tus comunidades.',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.95),
-                        fontSize: 14,
-                        height: 1.4,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
             const SizedBox(height: 24),
 
             // Feed de posts
@@ -720,11 +677,7 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
                 const SizedBox(width: 6),
                 Text('${post.reactions ?? 0}'),
                 const SizedBox(width: 16),
-                Icon(Icons.comment_outlined, color: Colors.grey[500], size: 18),
-                const SizedBox(width: 8),
-                const Text('Comentar'),
-                const Spacer(),
-                Icon(Icons.more_horiz, color: Colors.grey[400]),
+
               ],
             ),
           ],

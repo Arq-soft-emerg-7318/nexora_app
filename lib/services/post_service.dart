@@ -25,6 +25,30 @@ class PostService {
     }
   }
 
+  /// Fetch posts with optional query params for title, category name, page and size.
+  Future<List<Post>> fetchPostsPaged({String? title, String? category, int? categoryId, int page = 0, int size = 20, String? token}) async {
+    final query = <String, String>{};
+    if (title != null && title.isNotEmpty) query['title'] = title;
+    if (categoryId != null) query['categoryId'] = categoryId.toString();
+    else if (category != null && category.isNotEmpty && category.toLowerCase() != 'todos') query['category'] = category;
+    query['page'] = page.toString();
+    query['size'] = size.toString();
+
+    final url = Uri.parse('$_baseUrl/api/v1/posts').replace(queryParameters: query);
+    final headers = <String, String>{'accept': 'application/json'};
+    if (token != null && token.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+
+    final resp = await http.get(url, headers: headers);
+    if (resp.statusCode == 200) {
+      final data = jsonDecode(resp.body);
+      if (data is List) return data.map((e) => Post.fromJson(e as Map<String, dynamic>)).toList();
+      return [];
+    }
+    throw Exception('Error fetching posts paged: ${resp.statusCode}');
+  }
+
   /// Sends a like for [postId]. Returns the updated count if the server
   /// includes it in the response body, otherwise returns null.
   Future<int?> likePost({required int postId, int? userId, String? token}) async {
