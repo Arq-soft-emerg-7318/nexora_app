@@ -18,6 +18,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   final PostService _postService = PostService();
   late Post _post;
   bool _liking = false;
+  bool _liked = false;
   String? _authorName;
 
   // local category map (can be replaced by API/service if available)
@@ -50,12 +51,13 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   Future<void> _onLike() async {
-    if (_liking) return;
+    if (_liking || _liked) return;
     final postId = _post.id;
     final prev = _post.reactions ?? 0;
     setState(() {
       _liking = true;
       _post = _post.copyWith(reactions: prev + 1);
+      _liked = true;
     });
 
     try {
@@ -77,7 +79,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       }
     } catch (_) {
       // revert
-      if (mounted) setState(() => _post = _post.copyWith(reactions: prev));
+      if (mounted) setState(() {
+        _post = _post.copyWith(reactions: prev);
+        _liked = false;
+      });
     } finally {
       if (mounted) setState(() => _liking = false);
     }
@@ -123,8 +128,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                 if (_post.authorId != null) Text(_authorName != null ? 'Autor $_authorName' : 'Autor ${_post.authorId}'),
                 const Spacer(),
                 TextButton.icon(
-                  onPressed: _liking ? null : _onLike,
-                  icon: _liking ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.thumb_up_alt_outlined),
+                  onPressed: (_liking || _liked) ? null : _onLike,
+                  icon: _liking
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : (_liked ? const Icon(Icons.thumb_up, color: Color(0xFF5B9FED)) : const Icon(Icons.thumb_up_alt_outlined)),
                   label: Text('${_post.reactions ?? 0}'),
                 ),
               ],

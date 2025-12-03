@@ -76,7 +76,15 @@ class _CreateScreenState extends State<CreateScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            // If this screen was pushed on the navigator stack, pop it.
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+              return;
+            }
+            // Otherwise (likely shown as a bottom-tab view), navigate to HomeScreen.
+            Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const HomeScreen()), (route) => false);
+          },
           icon: const Icon(Icons.arrow_back, color: Colors.black87),
         ),
         title: const Text(

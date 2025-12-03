@@ -114,7 +114,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       children: [
                         // Email
                         Text(
-                          'Correo electrónico',
+                          'Usuario',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
@@ -126,7 +126,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           controller: _emailController,
                           keyboardType: TextInputType.emailAddress,
                           decoration: InputDecoration(
-                            hintText: 'tu.correo@ejemplo.com',
+                            hintText: 'Tatoft',
                             hintStyle: TextStyle(color: Colors.grey[400]),
                             prefixIcon: Icon(Icons.email_outlined, color: Colors.grey[400]),
                           ),

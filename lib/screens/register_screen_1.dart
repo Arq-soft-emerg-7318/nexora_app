@@ -232,9 +232,9 @@ class _RegisterScreen1State extends State<RegisterScreen1> {
                               ),
                               const SizedBox(height: 20),
                               
-                              // Email
+                              // Usuario
                               Text(
-                                'Correo electrónico',
+                                'Nombre de usuario',
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
@@ -246,16 +246,17 @@ class _RegisterScreen1State extends State<RegisterScreen1> {
                                 controller: _emailController,
                                 keyboardType: TextInputType.emailAddress,
                                 decoration: InputDecoration(
-                                  hintText: 'tu.correo@ejemplo.com',
+                                  hintText: 'Usuario123',
                                   hintStyle: TextStyle(color: Colors.grey[400]),
                                   prefixIcon: Icon(Icons.email_outlined, color: Colors.grey[400]),
                                 ),
                                 validator: (value) {
                                   if (value == null || value.isEmpty) {
-                                    return 'Por favor ingresa tu correo';
+                                    return 'Por favor ingresa un nombre de usuario';
                                   }
-                                  if (!value.contains('@')) {
-                                    return 'Por favor ingresa un correo válido';
+
+                                  if (value.length < 3) {
+                                    return 'El nombre de usuario debe tener al menos 3 caracteres';
                                   }
                                   return null;
                                 },

@@ -144,7 +144,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
               const SizedBox(height: 12),
               TextFormField(controller: _lastName, decoration: const InputDecoration(labelText: 'Apellidos'), validator: (v) => v==null||v.trim().isEmpty? 'Ingresa apellidos':null),
               const SizedBox(height: 12),
-              TextFormField(controller: _email, decoration: const InputDecoration(labelText: 'Email'), validator: (v) => v==null||v.trim().isEmpty? 'Ingresa email':null),
+              TextFormField(controller: _email, decoration: const InputDecoration(labelText: 'Usuario'), validator: (v) => v==null||v.trim().isEmpty? 'Ingresa email':null),
               const SizedBox(height: 12),
               TextFormField(controller: _direction, decoration: const InputDecoration(labelText: 'Dirección')),
               const SizedBox(height: 12),

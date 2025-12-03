@@ -187,13 +187,16 @@ class HomeContentScreen extends StatefulWidget {
 class _HomeContentScreenState extends State<HomeContentScreen> {
   final PostService _postService = PostService();
   final UserService _userService = UserService();
+  Map<int, String> _userEmails = {};
   Map<int, String> _usernames = {};
   final CommunityService _communityService = CommunityService();
   List<Community> _myCommunities = [];
+  Map<int, String> _communityNames = {};
   int? _selectedCommunityFilter;
   List<Post> _posts = [];
   bool _loading = true;
   final Set<int> _liking = {}; // posts being liked (loading state per post)
+  final Set<int> _likedPosts = {}; // posts liked by current user in this session
 
   @override
   void initState() {
@@ -207,16 +210,37 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
       final auth = Provider.of<AuthNotifier>(context, listen: false);
       final token = auth.token;
       final posts = await _postService.fetchPosts(token: token);
-      // Fetch usernames map so we can show usernames instead of numeric ids
+      // Fetch users' emails and usernames so we can display author email when available
       try {
-        final users = await _userService.fetchUsernames(token: token);
-        if (mounted) setState(() => _usernames = users);
+        final emails = await _userService.fetchEmails(token: token);
+        if (mounted) setState(() => _userEmails = emails);
+      } catch (_) {}
+      try {
+        final names = await _userService.fetchUsernames(token: token);
+        if (mounted) setState(() => _usernames = names);
       } catch (_) {}
 
       // Fetch user's communities to enable filtering in the feed
       try {
         final mine = await _communityService.fetchMine(token: token);
         if (mounted) setState(() => _myCommunities = mine);
+      } catch (_) {}
+
+      // For each distinct communityId present in posts, fetch community details (id -> name)
+      try {
+        final ids = posts.map((p) => p.communityId).where((id) => id != null).cast<int>().toSet();
+        final futures = ids.map((id) async {
+          try {
+            final c = await _communityService.fetchById(id, token: token);
+            return MapEntry(id, c.name);
+          } catch (_) {
+            return MapEntry(id, 'Comunidad $id');
+          }
+        }).toList();
+        final results = await Future.wait(futures);
+        final cmap = <int, String>{};
+        for (final e in results) cmap[e.key] = e.value;
+        if (mounted) setState(() => _communityNames = cmap);
       } catch (_) {}
 
       // Fetch authoritative like counts for all posts in parallel,
@@ -248,11 +272,14 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
 
   Future<void> _onLike(Post post) async {
     final postId = post.id;
+    // Prevent double-like in session
+    if (_likedPosts.contains(postId)) return;
     if (_liking.contains(postId)) return;
     // optimistic update: increment locally immediately to avoid flicker
     final prev = post.reactions ?? 0;
     setState(() {
       _liking.add(postId);
+      _likedPosts.add(postId);
       final idx = _posts.indexWhere((p) => p.id == postId);
       if (idx != -1) _posts[idx] = _posts[idx].copyWith(reactions: prev + 1);
     });
@@ -299,6 +326,8 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
       if (mounted) setState(() {
         final idx = _posts.indexWhere((p) => p.id == postId);
         if (idx != -1) _posts[idx] = _posts[idx].copyWith(reactions: prev);
+        // remove liked flag on failure so user can retry
+        _likedPosts.remove(postId);
       });
     } finally {
       if (mounted) setState(() => _liking.remove(postId));
@@ -451,181 +480,9 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
     );
   }
 
-  static Widget _buildPostCard({
-    required String name,
-    required String role,
-    required String time,
-    required String category,
-    required Color categoryColor,
-    required String title,
-    required String content,
-    required int likes,
-    required int comments,
-    required Color avatarColor,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header del post
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 24,
-                  backgroundColor: avatarColor.withOpacity(0.2),
-                  child: Icon(
-                    Icons.person,
-                    color: avatarColor,
-                    size: 28,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        role,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Text(
-                  time,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[500],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // Categoría
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: categoryColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                category,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: categoryColor,
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // Título
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-                height: 1.3,
-              ),
-            ),
-            const SizedBox(height: 8),
-
-            // Contenido
-            Text(
-              content,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[700],
-                height: 1.5,
-              ),
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 4),
-
-            // Ver más
-            TextButton(
-              onPressed: () {},
-              style: TextButton.styleFrom(
-                padding: EdgeInsets.zero,
-                minimumSize: const Size(0, 0),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              child: const Text(
-                'Ver más',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF5B9FED),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // Acciones
-            Row(
-              children: [
-                Icon(Icons.favorite_border, size: 20, color: Colors.grey[600]),
-                const SizedBox(width: 6),
-                Text(
-                  likes.toString(),
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                const SizedBox(width: 24),
-                Icon(Icons.chat_bubble_outline, size: 20, color: Colors.grey[600]),
-                const SizedBox(width: 6),
-                Text(
-                  comments.toString(),
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                const Spacer(),
-                IconButton(
-                  onPressed: () {},
-                  icon: Icon(Icons.share_outlined, color: Colors.grey[600]),
-                  iconSize: 20,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // Removed unused helper to avoid analyzer warnings. Per-post rendering
+  // is implemented in `_buildPostCardFromPost` which uses cached
+  // `_userEmails` and `_communityNames` maps.
 
   Widget _buildPostCardFromPost(Post post) {
     return Container(
@@ -668,7 +525,7 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Autor: ${_usernames[post.authorId] ?? post.authorId?.toString() ?? '-'} • ${post.communityId != null ? 'Comunidad ${post.communityId}' : ''}',
+                        '${post.communityId != null ? (_communityNames[post.communityId] ?? 'Comunidad ${post.communityId}') : ''}',
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.grey[600],
@@ -764,8 +621,10 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
             Row(
               children: [
                 IconButton(
-                  onPressed: _liking.contains(post.id) ? null : () => _onLike(post),
-                  icon: Icon(Icons.thumb_up_alt_outlined, color: Colors.grey[500], size: 18),
+                  onPressed: (_liking.contains(post.id) || _likedPosts.contains(post.id)) ? null : () => _onLike(post),
+                  icon: _likedPosts.contains(post.id)
+                      ? const Icon(Icons.thumb_up, color: Color(0xFF5B9FED), size: 18)
+                      : Icon(Icons.thumb_up_alt_outlined, color: Colors.grey[500], size: 18),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                 ),

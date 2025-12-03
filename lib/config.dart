@@ -1,6 +1,6 @@
 class AppConfig {
   // Base URL para API backend
-  static String apiBase = 'http://192.168.18.157:8080';
+  static String apiBase = 'https://nexora-gyhmeqctccb0b9g9.francecentral-01.azurewebsites.net';
 
   // Endpoint para el servicio de IA (generador)
   static String aiBase = 'http://192.168.18.157:3000';

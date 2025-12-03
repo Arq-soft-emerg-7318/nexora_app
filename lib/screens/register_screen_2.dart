@@ -54,6 +54,7 @@ class _RegisterScreen2State extends State<RegisterScreen2> {
             last = parts.sublist(1).join(' ');
           }
 
+          // We don't have an email at registration (username flow). Use username as placeholder in profile.email.
           final profile = Profile(id: null, firstName: first, lastName: last, email: widget.email);
 
           Navigator.of(context).pushAndRemoveUntil(
