@@ -1,11 +1,175 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../services/community_service.dart';
+import '../models/community.dart';
+import '../services/auth_notifier.dart';
 
-class TrendsScreen extends StatelessWidget {
+class TrendsScreen extends StatefulWidget {
   const TrendsScreen({Key? key}) : super(key: key);
+
+  @override
+  State<TrendsScreen> createState() => _TrendsScreenState();
+}
+
+class _TrendsScreenState extends State<TrendsScreen> {
+  final CommunityService _communityService = CommunityService();
+  List<Community> _communities = [];
+  bool _loading = true;
+  final Set<int> _myCommunityIds = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCommunities();
+  }
+
+  Future<void> _loadCommunities() async {
+    setState(() => _loading = true);
+    try {
+      final auth = Provider.of<AuthNotifier>(context, listen: false);
+      final token = auth.token;
+      final fetched = await _communityService.fetchAll(token: token);
+      List<Community> mine = [];
+      try {
+        mine = await _communityService.fetchMine(token: token);
+      } catch (_) {
+        // ignore: could not fetch user's communities
+      }
+      setState(() {
+        _communities = fetched;
+        _myCommunityIds.clear();
+        _myCommunityIds.addAll(mine.map((c) => c.id));
+      });
+    } catch (e) {
+      // ignore
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _showCreateCommunitySheet(BuildContext ctx) async {
+    final nameCtl = TextEditingController();
+    final descCtl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    await showModalBottomSheet<bool>(
+      context: ctx,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          child: StatefulBuilder(builder: (context, setState) {
+            bool loading = false;
+            String? error;
+
+            Future<void> submit() async {
+              if (!formKey.currentState!.validate()) return;
+              setState(() {
+                loading = true;
+                error = null;
+              });
+              final auth = Provider.of<AuthNotifier>(ctx, listen: false);
+              final token = auth.token;
+              try {
+                final ok = await _communityService.createCommunity(nameCtl.text.trim(), descCtl.text.trim(), token: token);
+                if (ok) {
+                  Navigator.of(context).pop(true);
+                  ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Comunidad creada')));
+                  await _loadCommunities();
+                } else {
+                  setState(() {
+                    error = 'No se pudo crear la comunidad';
+                  });
+                }
+              } catch (e) {
+                setState(() {
+                  error = 'Error: ${e.toString()}';
+                });
+              } finally {
+                if (mounted) setState(() => loading = false);
+              }
+            }
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Crear comunidad', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      IconButton(onPressed: () => Navigator.of(context).pop(false), icon: const Icon(Icons.close)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Form(
+                    key: formKey,
+                    child: Column(children: [
+                      TextFormField(
+                        controller: nameCtl,
+                        decoration: const InputDecoration(labelText: 'Nombre de comunidad', border: OutlineInputBorder()),
+                        validator: (v) => (v == null || v.trim().isEmpty) ? 'Ingrese un nombre' : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: descCtl,
+                        decoration: const InputDecoration(labelText: 'Descripción (opcional)', border: OutlineInputBorder()),
+                        maxLines: 3,
+                      ),
+                      if (error != null) ...[
+                        const SizedBox(height: 8),
+                        Text(error!, style: const TextStyle(color: Colors.red)),
+                      ],
+                      const SizedBox(height: 12),
+                      Row(children: [
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: loading ? null : submit,
+                            style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+                            child: loading ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Crear comunidad'),
+                          ),
+                        ),
+                      ])
+                    ]),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            );
+          }),
+        );
+      },
+    );
+  }
+
+  Future<void> _joinCommunity(int id) async {
+    final auth = Provider.of<AuthNotifier>(context, listen: false);
+    final token = auth.token;
+    try {
+      final ok = await _communityService.joinCommunity(id, token: token);
+      if (ok) {
+        // update local membership state immediately
+        setState(() => _myCommunityIds.add(id));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Te uniste a la comunidad')));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo unir')));
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo unir')));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showCreateCommunitySheet(context),
+        icon: const Icon(Icons.group_add),
+        label: const Text('Crear comunidad'),
+      ),
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -28,15 +192,15 @@ class TrendsScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
-                      children: [
-                        const Icon(
-                          Icons.trending_up,
+                      children: const [
+                        Icon(
+                          Icons.group,
                           color: Colors.white,
                           size: 24,
                         ),
-                        const SizedBox(width: 12),
-                        const Text(
-                          'Tendencias',
+                        SizedBox(width: 12),
+                        Text(
+                          'Comunidades',
                           style: TextStyle(
                             fontSize: 28,
                             fontWeight: FontWeight.bold,
@@ -47,17 +211,17 @@ class TrendsScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Contenido curado por IA basado en tus intereses',
+                      'Explora y únete a comunidades relevantes',
                       style: TextStyle(
                         fontSize: 14,
-                        color: Colors.white.withValues(alpha: 0.9),
+                        color: Colors.white.withOpacity(0.95),
                       ),
                     ),
                   ],
                 ),
               ),
 
-              // Contenido
+              // Content
               Expanded(
                 child: Container(
                   decoration: const BoxDecoration(
@@ -67,332 +231,48 @@ class TrendsScreen extends StatelessWidget {
                       topRight: Radius.circular(24),
                     ),
                   ),
-                  child: ListView(
-                    padding: const EdgeInsets.all(20),
-                    children: [
-                      // Insights de IA
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.auto_awesome,
-                            color: const Color(0xFF5B9FED),
-                            size: 20,
-                          ),
-                          const SizedBox(width: 8),
-                          const Text(
-                            'Insights de IA',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black87,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Insight Card 1
-                      _buildInsightCard(
-                        icon: Icons.bolt,
-                        iconColor: const Color(0xFF5B9FED),
-                        title: 'Aumento del 35% en publicaciones sobre sostenibilidad',
-                        percentage: '+35%',
-                        percentageColor: Colors.green,
-                        description:
-                        'La comunidad está mostrando un interés creciente en prácticas mineras sostenibles y reducción de impacto ambiental.',
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Insight Card 2
-                      _buildInsightCard(
-                        icon: Icons.bolt,
-                        iconColor: const Color(0xFF5B9FED),
-                        title: 'Tecnologías de automatización más discutidas',
-                        percentage: '+28%',
-                        percentageColor: Colors.green,
-                        description:
-                        'Los temas relacionados con automatización y robótica minera dominan las conversaciones esta semana.',
-                      ),
-                      const SizedBox(height: 32),
-
-                      // Temas en tendencia
-                      const Text(
-                        'Temas en tendencia',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Tema 1
-                      _buildTrendingTopic(
-                        number: 1,
-                        title: 'Minería con drones',
-                        category: 'Innovación',
-                        categoryColor: const Color(0xFF5B9FED),
-                        publications: '234 publicaciones',
-                        percentage: '+156%',
-                        gradientColors: const [
-                          Color(0xFFE3F2FD),
-                          Color(0xFFBBDEFB),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Tema 2
-                      _buildTrendingTopic(
-                        number: 2,
-                        title: 'Regulaciones ambientales 2025',
-                        category: 'Normativa',
-                        categoryColor: const Color(0xFF7E57C2),
-                        publications: '189 publicaciones',
-                        percentage: '+142%',
-                        gradientColors: const [
-                          Color(0xFFE8EAF6),
-                          Color(0xFFC5CAE9),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Tema 3
-                      _buildTrendingTopic(
-                        number: 3,
-                        title: 'IA en análisis geológico',
-                        category: 'Tecnología',
-                        categoryColor: const Color(0xFF66BB6A),
-                        publications: '167 publicaciones',
-                        percentage: '+128%',
-                        gradientColors: const [
-                          Color(0xFFE8F5E9),
-                          Color(0xFFC8E6C9),
-                        ],
-                      ),
-                      const SizedBox(height: 100),
-                    ],
+                  child: RefreshIndicator(
+                    onRefresh: _loadCommunities,
+                    child: _loading
+                        ? const Center(child: CircularProgressIndicator())
+                        : _communities.isEmpty
+                            ? ListView(
+                                padding: const EdgeInsets.all(24),
+                                children: const [
+                                  Center(child: Text('No hay comunidades', style: TextStyle(color: Colors.grey))),
+                                ],
+                              )
+                            : ListView.builder(
+                                padding: const EdgeInsets.all(16),
+                                itemCount: _communities.length,
+                                itemBuilder: (context, index) {
+                                  final c = _communities[index];
+                                  final joined = _myCommunityIds.contains(c.id);
+                                  return Card(
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    margin: const EdgeInsets.symmetric(vertical: 8),
+                                    child: ListTile(
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                      title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                      subtitle: c.description != null ? Text(c.description!) : null,
+                                      trailing: joined
+                                          ? OutlinedButton(
+                                              onPressed: null,
+                                              child: const Text('Unido'),
+                                            )
+                                          : ElevatedButton(
+                                              onPressed: () => _joinCommunity(c.id),
+                                              child: const Text('Unirse'),
+                                            ),
+                                    ),
+                                  );
+                                },
+                              ),
                   ),
                 ),
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInsightCard({
-    required IconData icon,
-    required Color iconColor,
-    required String title,
-    required String percentage,
-    required Color percentageColor,
-    required String description,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF5F9FF),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: const Color(0xFF5B9FED).withValues(alpha: 0.2),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              icon,
-              color: iconColor,
-              size: 24,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: percentageColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        percentage,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: percentageColor,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  description,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.grey[600],
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTrendingTopic({
-    required int number,
-    required String title,
-    required String category,
-    required Color categoryColor,
-    required String publications,
-    required String percentage,
-    required List<Color> gradientColors,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: gradientColors,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: categoryColor.withValues(alpha: 0.3),
-          width: 2,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            // Número
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Center(
-                child: Text(
-                  number.toString(),
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: categoryColor,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 16),
-
-            // Contenido
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: categoryColor.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          category,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: categoryColor,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        publications,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            // Porcentaje
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 10,
-                vertical: 6,
-              ),
-              decoration: BoxDecoration(
-                color: Colors.green.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.trending_up,
-                    color: Colors.green,
-                    size: 16,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    percentage,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
         ),
       ),
     );

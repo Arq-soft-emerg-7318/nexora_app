@@ -2,13 +2,13 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart' as sp;
+import '../config.dart';
 
 class AuthService {
-  static const String _baseUrl = 'http://192.168.18.157:8080';
   static const String _tokenKey = 'auth_token';
 
   Future<bool> signUp({required String username, required String password, List<String>? roles}) async {
-    final url = Uri.parse('$_baseUrl/api/v1/authentication/sign-up');
+    final url = Uri.parse('${AppConfig.apiBase}/api/v1/authentication/sign-up');
     final body = jsonEncode({
       'username': username,
       'password': password,
@@ -32,7 +32,7 @@ class AuthService {
   }
 
   Future<bool> signIn({required String username, required String password}) async {
-    final url = Uri.parse('$_baseUrl/api/v1/authentication/sign-in');
+    final url = Uri.parse('${AppConfig.apiBase}/api/v1/authentication/sign-in');
     final body = jsonEncode({
       'username': username,
       'password': password,

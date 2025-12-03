@@ -6,6 +6,7 @@ import 'package:http_parser/http_parser.dart';
 import 'package:mime/mime.dart';
 import 'package:path/path.dart' as p;
 import 'auth_service.dart';
+import '../config.dart';
 
 /// Servicio para subir posts con archivo usando Dio (multipart/form-data).
 ///
@@ -62,7 +63,7 @@ class UploadService {
   /// - token: opcional JWT (si null se lee desde storage).
   /// - postMap: mapa con los campos del post (se envía como parte 'post' con JSON content-type).
   /// - file: archivo opcional a enviar como parte 'file'.
-  static Future<Response> uploadPost(String? token, Map<String, dynamic> postMap, File? file, {String baseUrl = 'http://192.168.18.157:8080'}) async {
+  static Future<Response> uploadPost(String? token, Map<String, dynamic> postMap, File? file, {String? baseUrl}) async {
     _ensureInitialized();
 
     // Use provided token or load from storage
@@ -102,7 +103,8 @@ class UploadService {
     }
 
     try {
-      final resp = await _dio.post('$baseUrl/api/v1/posts', data: formData, options: Options(headers: effectiveToken != null ? {'Authorization': 'Bearer $effectiveToken'} : null, validateStatus: (_) => true));
+      final effectiveBase = baseUrl ?? AppConfig.apiBase;
+      final resp = await _dio.post('$effectiveBase/api/v1/posts', data: formData, options: Options(headers: effectiveToken != null ? {'Authorization': 'Bearer $effectiveToken'} : null, validateStatus: (_) => true));
       return resp;
     } on DioException catch (e) {
       final status = e.response?.statusCode;

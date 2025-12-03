@@ -10,8 +10,11 @@ import 'ai_preview_screen.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 
 import '../services/auth_notifier.dart';
+import '../services/community_service.dart';
+import '../models/community.dart';
 import 'login_screen.dart';
 import 'home_screen.dart';
+import '../config.dart';
 
 class CreateScreen extends StatefulWidget {
   const CreateScreen({Key? key}) : super(key: key);
@@ -24,6 +27,10 @@ class _CreateScreenState extends State<CreateScreen> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _contentController = TextEditingController();
   final TextEditingController _communityController = TextEditingController();
+
+  final CommunityService _communityService = CommunityService();
+  List<Community> _myCommunities = [];
+  int? _selectedCommunityId;
 
   // category name -> id mapping (sample ids). Ajusta más tarde con endpoint real.
   final Map<String, int> _categoryMap = {
@@ -44,6 +51,21 @@ class _CreateScreenState extends State<CreateScreen> {
     _contentController.dispose();
     _communityController.dispose();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMyCommunities();
+  }
+
+  Future<void> _loadMyCommunities() async {
+    try {
+      final auth = Provider.of<AuthNotifier>(context, listen: false);
+      final token = auth.token;
+      final list = await _communityService.fetchMine(token: token);
+      if (mounted) setState(() => _myCommunities = list);
+    } catch (_) {}
   }
 
   @override
@@ -68,34 +90,7 @@ class _CreateScreenState extends State<CreateScreen> {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16, top: 8, bottom: 8),
-            child: ElevatedButton.icon(
-              onPressed: () {
-                // Lógica para publicar
-                if (_contentController.text.isNotEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Publicación creada exitosamente'),
-                      backgroundColor: Color(0xFF5B9FED),
-                    ),
-                  );
-                  _contentController.clear();
-                }
-              },
-              icon: const Icon(Icons.send, size: 18),
-              label: const Text('Publicar'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF5B9FED),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                elevation: 0,
-              ),
-            ),
+
           ),
         ],
       ),
@@ -228,21 +223,24 @@ class _CreateScreenState extends State<CreateScreen> {
             ),
             const SizedBox(height: 12),
 
-            // CommunityId opcional
+            // Comunidad (selector basado en tus comunidades)
             const Text(
-              'Community ID (opcional)',
+              'Comunidad (opcional)',
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
             ),
             const SizedBox(height: 8),
-            TextField(
-              controller: _communityController,
-              keyboardType: TextInputType.number,
+            DropdownButtonFormField<int?>(
+              value: _selectedCommunityId,
+              items: [
+                const DropdownMenuItem<int?>(value: null, child: Text('Ninguna')),
+                ..._myCommunities.map((c) => DropdownMenuItem<int?>(value: c.id, child: Text(c.name)))
+              ],
+              onChanged: (v) => setState(() => _selectedCommunityId = v),
               decoration: InputDecoration(
-                hintText: 'Dejar vacío si no aplica',
                 filled: true,
                 fillColor: Colors.grey[50],
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
               ),
             ),
             const SizedBox(height: 16),
@@ -414,15 +412,15 @@ class _CreateScreenState extends State<CreateScreen> {
         return;
       }
       final categoryId = _categoryMap[_selectedCategory];
-      int? communityId;
-      if (_communityController.text.trim().isNotEmpty) {
-        communityId = int.tryParse(_communityController.text.trim());
-      }
+      int? communityId = _selectedCommunityId;
+
+      // sanitize body: remove markdown emphasis, base64/image blobs and any http(s) urls
+      final sanitizedBody = _removeUrls(_sanitizeText(body));
 
       final Map<String, dynamic> postObj = {
         'title': title,
         'authorId': null,
-        'body': body,
+        'body': sanitizedBody,
         'categoryId': categoryId,
         // 'reactions' omitted intentionally
         'fileId': 0,
@@ -778,7 +776,7 @@ class _CreateScreenState extends State<CreateScreen> {
   }
 
   Future<Map<String, dynamic>> _generateFromEndpoint(String prompt) async {
-    final url = Uri.parse('http://192.168.18.157:3000/generate');
+    final url = Uri.parse('${AppConfig.aiBase}/generate');
     final resp = await http.post(url, headers: {'Content-Type': 'application/json'}, body: jsonEncode({'prompt': _shortenPrompt(prompt)}));
     if (resp.statusCode != 200) throw Exception('IA endpoint error ${resp.statusCode}: ${resp.body}');
     final data = jsonDecode(resp.body);
@@ -830,6 +828,19 @@ class _CreateScreenState extends State<CreateScreen> {
       filtered.add(t);
     }
     return filtered.join('\n').trim();
+  }
+
+  String _removeUrls(String s) {
+    // Remove http(s) and www links from the text to avoid embedding image URLs inside the body
+    final urlRegex = RegExp(r'https?:\/\/\S+|www\.\S+', caseSensitive: false);
+    final lines = s.split(RegExp(r'\r?\n'));
+    final cleaned = <String>[];
+    for (var line in lines) {
+      var t = line.replaceAll(urlRegex, '').trim();
+      if (t.isEmpty) continue;
+      cleaned.add(t);
+    }
+    return cleaned.join('\n');
   }
 
   String _sanitizeAndTruncateTitle(String s, int maxWords) {

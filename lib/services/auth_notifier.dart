@@ -86,13 +86,11 @@ class AuthNotifier extends ChangeNotifier {
     _loading = true;
     notifyListeners();
     try {
+      // Create the user account only. Do not sign in automatically here.
       final ok = await _service.signUp(username: username, password: password);
       if (ok) {
-        // attempt sign in to obtain token
-        final signinOk = await _service.signIn(username: username, password: password);
-        if (signinOk) _token = await _service.getToken();
         notifyListeners();
-        return signinOk;
+        return true;
       }
       return false;
     } finally {

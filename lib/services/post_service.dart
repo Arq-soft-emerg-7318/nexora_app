@@ -2,12 +2,12 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import '../models/post.dart';
+import '../config.dart';
 
 class PostService {
-  static const String _baseUrl = 'http://192.168.18.157:8080';
 
   Future<List<Post>> fetchPosts({String? token}) async {
-    final url = Uri.parse('$_baseUrl/api/v1/posts');
+    final url = Uri.parse('${AppConfig.apiBase}/api/v1/posts');
     final headers = <String, String>{'accept': 'application/json'};
     if (token != null && token.isNotEmpty) {
       headers['Authorization'] = 'Bearer $token';
@@ -17,7 +17,9 @@ class PostService {
     if (resp.statusCode == 200) {
       final data = jsonDecode(resp.body);
       if (data is List) {
-        return data.map((e) => Post.fromJson(e as Map<String, dynamic>)).toList();
+        final posts = data.map((e) => Post.fromJson(e as Map<String, dynamic>)).toList();
+        posts.sort((a, b) => b.id.compareTo(a.id));
+        return posts;
       }
       return [];
     } else {
@@ -34,7 +36,7 @@ class PostService {
     query['page'] = page.toString();
     query['size'] = size.toString();
 
-    final url = Uri.parse('$_baseUrl/api/v1/posts').replace(queryParameters: query);
+    final url = Uri.parse('${AppConfig.apiBase}/api/v1/posts').replace(queryParameters: query);
     final headers = <String, String>{'accept': 'application/json'};
     if (token != null && token.isNotEmpty) {
       headers['Authorization'] = 'Bearer $token';
@@ -43,7 +45,11 @@ class PostService {
     final resp = await http.get(url, headers: headers);
     if (resp.statusCode == 200) {
       final data = jsonDecode(resp.body);
-      if (data is List) return data.map((e) => Post.fromJson(e as Map<String, dynamic>)).toList();
+      if (data is List) {
+        final posts = data.map((e) => Post.fromJson(e as Map<String, dynamic>)).toList();
+        posts.sort((a, b) => b.id.compareTo(a.id));
+        return posts;
+      }
       return [];
     }
     throw Exception('Error fetching posts paged: ${resp.statusCode}');
@@ -52,7 +58,7 @@ class PostService {
   /// Sends a like for [postId]. Returns the updated count if the server
   /// includes it in the response body, otherwise returns null.
   Future<int?> likePost({required int postId, int? userId, String? token}) async {
-    final url = Uri.parse('$_baseUrl/api/v1/likes');
+    final url = Uri.parse('${AppConfig.apiBase}/api/v1/likes');
     final headers = <String, String>{'Content-Type': 'application/json'};
     if (token != null && token.isNotEmpty) headers['Authorization'] = 'Bearer $token';
 
@@ -84,7 +90,7 @@ class PostService {
   }
 
   Future<int> getLikeCount(int postId, {String? token}) async {
-    final url = Uri.parse('$_baseUrl/api/v1/likes/post/$postId/count');
+    final url = Uri.parse('${AppConfig.apiBase}/api/v1/likes/post/$postId/count');
     final headers = <String, String>{'accept': 'application/json'};
     if (token != null && token.isNotEmpty) headers['Authorization'] = 'Bearer $token';
 

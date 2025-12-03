@@ -4,11 +4,16 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import '../services/auth_notifier.dart';
 import '../services/post_service.dart';
+import '../services/user_service.dart';
+import '../services/community_service.dart';
+import '../models/community.dart';
 import '../models/post.dart';
 import 'explore_screen.dart';
 import 'create_screen.dart';
 import 'trends_screen.dart';
 import 'profile_screen.dart';
+import 'post_detail_screen.dart';
+import '../utils/text_utils.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -69,9 +74,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 _buildCreateButton(),
                 _buildNavItem(
-                  icon: Icons.trending_up,
-                  activeIcon: Icons.trending_up,
-                  label: 'Tendencias',
+                  icon: Icons.group_add,
+                  activeIcon: Icons.group_add,
+                  label: 'Comunidades',
                   index: 3,
                 ),
                 _buildNavItem(
@@ -181,6 +186,11 @@ class HomeContentScreen extends StatefulWidget {
 
 class _HomeContentScreenState extends State<HomeContentScreen> {
   final PostService _postService = PostService();
+  final UserService _userService = UserService();
+  Map<int, String> _usernames = {};
+  final CommunityService _communityService = CommunityService();
+  List<Community> _myCommunities = [];
+  int? _selectedCommunityFilter;
   List<Post> _posts = [];
   bool _loading = true;
   final Set<int> _liking = {}; // posts being liked (loading state per post)
@@ -197,12 +207,23 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
       final auth = Provider.of<AuthNotifier>(context, listen: false);
       final token = auth.token;
       final posts = await _postService.fetchPosts(token: token);
+      // Fetch usernames map so we can show usernames instead of numeric ids
+      try {
+        final users = await _userService.fetchUsernames(token: token);
+        if (mounted) setState(() => _usernames = users);
+      } catch (_) {}
+
+      // Fetch user's communities to enable filtering in the feed
+      try {
+        final mine = await _communityService.fetchMine(token: token);
+        if (mounted) setState(() => _myCommunities = mine);
+      } catch (_) {}
+
       // Fetch authoritative like counts for all posts in parallel,
       // then update the posts list so the UI shows counts from the likes API.
       final futures = posts.map((p) async {
-        if (p.id == null) return p;
         try {
-          final count = await _postService.getLikeCount(p.id!, token: token);
+          final count = await _postService.getLikeCount(p.id, token: token);
           return p.copyWith(reactions: count);
         } catch (_) {
           // on failure, keep original reactions value
@@ -211,8 +232,12 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
       }).toList();
 
       final updated = await Future.wait(futures);
+      var finalList = updated;
+      if (_selectedCommunityFilter != null) {
+        finalList = finalList.where((p) => p.communityId == _selectedCommunityFilter).toList();
+      }
       setState(() {
-        _posts = updated;
+        _posts = finalList;
       });
     } catch (e) {
       // ignore and show empty list / snack
@@ -222,8 +247,7 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
   }
 
   Future<void> _onLike(Post post) async {
-    if (post.id == null) return;
-    final postId = post.id!;
+    final postId = post.id;
     if (_liking.contains(postId)) return;
     // optimistic update: increment locally immediately to avoid flicker
     final prev = post.reactions ?? 0;
@@ -316,16 +340,6 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
                     ),
                   ),
                   const Spacer(),
-                  IconButton(
-                    onPressed: () {},
-                    icon: const Icon(Icons.chat_bubble_outline),
-                    color: Colors.grey,
-                  ),
-                  IconButton(
-                    onPressed: () {},
-                    icon: const Icon(Icons.notifications_outlined),
-                    color: Colors.grey,
-                  ),
                 ],
               )
 
@@ -333,26 +347,102 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
 
             const SizedBox(height: 24),
 
+            // Filtro por mis comunidades (chips horizontales)
+            if (_myCommunities.isNotEmpty) ...[
+              SizedBox(
+                height: 56,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: 1 + _myCommunities.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    itemBuilder: (context, idx) {
+                      if (idx == 0) {
+                        final active = _selectedCommunityFilter == null;
+                        return ChoiceChip(
+                          label: const Text('Todas'),
+                          selected: active,
+                          onSelected: (_) {
+                            setState(() => _selectedCommunityFilter = null);
+                            _loadPosts();
+                          },
+                          selectedColor: const Color(0xFF5B9FED),
+                          backgroundColor: Colors.grey[100],
+                          labelStyle: TextStyle(color: active ? Colors.white : Colors.black87),
+                        );
+                      }
+                      final comm = _myCommunities[idx - 1];
+                      final active = _selectedCommunityFilter == comm.id;
+                      return ChoiceChip(
+                        label: Text(comm.name),
+                        selected: active,
+                        onSelected: (_) {
+                          setState(() => _selectedCommunityFilter = active ? null : comm.id);
+                          _loadPosts();
+                        },
+                        selectedColor: const Color(0xFF5B9FED),
+                        backgroundColor: Colors.grey[100],
+                        labelStyle: TextStyle(color: active ? Colors.white : Colors.black87),
+                        avatar: CircleAvatar(
+                          backgroundColor: const Color(0xFF5B9FED).withOpacity(0.2),
+                          child: Text(comm.name.isNotEmpty ? comm.name[0].toUpperCase() : '?', style: TextStyle(color: const Color(0xFF5B9FED))),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+
             // Feed de posts
             Expanded(
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : RefreshIndicator(
                       onRefresh: _loadPosts,
-                      child: ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: _posts.length + 1,
-                        itemBuilder: (context, index) {
-                          if (index == _posts.length) return const SizedBox(height: 80);
-                          final post = _posts[index];
-                          return Column(
-                            children: [
-                              _buildPostCardFromPost(post),
-                              const SizedBox(height: 16),
-                            ],
-                          );
-                        },
-                      ),
+                      child: _posts.isEmpty
+                          ? ListView(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 40),
+                              children: [
+                                Center(
+                                  child: Text(
+                                    _selectedCommunityFilter != null
+                                        ? 'No se encontraron posts en esa comunidad'
+                                        : 'No se encontraron posts',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                                  ),
+                                ),
+                                const SizedBox(height: 200),
+                              ],
+                            )
+                          : ListView.builder(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              itemCount: _posts.length + 1,
+                              itemBuilder: (context, index) {
+                                if (index == _posts.length) return const SizedBox(height: 80);
+                                final post = _posts[index];
+                                return Column(
+                                  children: [
+                                    InkWell(
+                                      onTap: () {
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                            builder: (_) => PostDetailScreen(post: post),
+                                          ),
+                                        );
+                                      },
+                                      borderRadius: BorderRadius.circular(16),
+                                      child: _buildPostCardFromPost(post),
+                                    ),
+                                    const SizedBox(height: 16),
+                                  ],
+                                );
+                              },
+                            ),
                     ),
             ),
           ],
@@ -569,7 +659,7 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        post.title,
+                        sanitizeText(_usernames[post.authorId] ?? (post.authorId != null ? 'Usuario ${post.authorId}' : 'Usuario')),
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
@@ -578,7 +668,7 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Autor: ${post.authorId ?? '-'} • ${post.communityId != null ? 'Comunidad ${post.communityId}' : ''}',
+                        'Autor: ${_usernames[post.authorId] ?? post.authorId?.toString() ?? '-'} • ${post.communityId != null ? 'Comunidad ${post.communityId}' : ''}',
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.grey[600],
@@ -597,9 +687,21 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            // Body
+            // Título (si existe) y cuerpo
+            if (post.title.trim().isNotEmpty) ...[
+              Text(
+                sanitizeText(post.title),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                  height: 1.3,
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
             Text(
-              post.body,
+              sanitizeText(post.body),
               style: TextStyle(
                 fontSize: 14,
                 color: Colors.grey[800],

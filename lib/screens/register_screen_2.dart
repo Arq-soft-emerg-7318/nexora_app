@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../services/auth_notifier.dart';
-import 'home_screen.dart';
+// no provider required here; we call AuthService directly for sign-up
+import '../services/auth_service.dart';
+import 'profile_edit_screen.dart';
+import '../models/profile.dart';
 
 class RegisterScreen2 extends StatefulWidget {
   final String name;
@@ -21,19 +22,10 @@ class RegisterScreen2 extends StatefulWidget {
 
 class _RegisterScreen2State extends State<RegisterScreen2> {
   final _formKey = GlobalKey<FormState>();
-  String? _selectedRole;
   final _companyController = TextEditingController();
   bool _acceptTerms = false;
   bool _isLoading = false;
 
-  final List<Map<String, dynamic>> _roles = [
-    {'value': 'ingeniero', 'label': 'Ingeniero de Minas', 'icon': Icons.engineering},
-    {'value': 'geologo', 'label': 'Geólogo', 'icon': Icons.terrain},
-    {'value': 'supervisor', 'label': 'Supervisor', 'icon': Icons.supervisor_account},
-    {'value': 'seguridad', 'label': 'Seguridad', 'icon': Icons.security},
-    {'value': 'operador', 'label': 'Operador', 'icon': Icons.build},
-    {'value': 'otro', 'label': 'Otro', 'icon': Icons.more_horiz},
-  ];
 
   @override
   void dispose() {
@@ -42,17 +34,30 @@ class _RegisterScreen2State extends State<RegisterScreen2> {
   }
 
   Future<void> _completeRegistration() async {
-    if (_formKey.currentState!.validate() && _acceptTerms && _selectedRole != null) {
+    if (_formKey.currentState!.validate() && _acceptTerms) {
       // Llamar al servicio de autenticación para crear cuenta y luego iniciar sesión
       setState(() {
         _isLoading = true;
       });
-      final auth = Provider.of<AuthNotifier>(context, listen: false);
       try {
-        final ok = await auth.signUp(username: widget.email, password: widget.password);
+        // Use AuthService.signUp directly so we DON'T sign in yet.
+        final authService = AuthService();
+        final ok = await authService.signUp(username: widget.email, password: widget.password);
         if (ok && mounted) {
+          // Prellenar nombre y apellido si el usuario proporcionó un nombre completo
+          final fullName = widget.name.trim();
+          String first = fullName;
+          String last = '';
+          if (fullName.contains(' ')) {
+            final parts = fullName.split(RegExp(r"\s+"));
+            first = parts.first;
+            last = parts.sublist(1).join(' ');
+          }
+
+          final profile = Profile(id: null, firstName: first, lastName: last, email: widget.email);
+
           Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (context) => const HomeScreen()),
+            MaterialPageRoute(builder: (context) => ProfileEditScreen(profile: profile, password: widget.password)),
             (route) => false,
           );
         }
@@ -67,13 +72,6 @@ class _RegisterScreen2State extends State<RegisterScreen2> {
           });
         }
       }
-    } else if (_selectedRole == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Por favor selecciona tu rol profesional'),
-          backgroundColor: Colors.red,
-        ),
-      );
     } else if (!_acceptTerms) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -245,55 +243,7 @@ class _RegisterScreen2State extends State<RegisterScreen2> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Rol profesional
-                              Text(
-                                'Rol profesional',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.grey[700],
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 16),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey[50],
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: DropdownButtonFormField<String>(
-                                  value: _selectedRole,
-                                  decoration: const InputDecoration(
-                                    border: InputBorder.none,
-                                    prefixIcon: Icon(Icons.work_outline),
-                                    hintText: 'Selecciona tu rol',
-                                  ),
-                                  items: _roles.map((role) {
-                                    return DropdownMenuItem<String>(
-                                      value: role['value'],
-                                      child: Row(
-                                        children: [
-                                          Icon(role['icon'], size: 20, color: Colors.grey[600]),
-                                          const SizedBox(width: 12),
-                                          Text(role['label']),
-                                        ],
-                                      ),
-                                    );
-                                  }).toList(),
-                                  onChanged: (value) {
-                                    setState(() {
-                                      _selectedRole = value;
-                                    });
-                                  },
-                                  validator: (value) {
-                                    if (value == null) {
-                                      return 'Por favor selecciona tu rol';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                              ),
-                              const SizedBox(height: 20),
+                              const SizedBox(height: 4),
                               
                               // Empresa (opcional)
                               Text(

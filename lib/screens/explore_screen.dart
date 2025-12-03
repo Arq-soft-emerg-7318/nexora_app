@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/post_service.dart';
 import '../models/post.dart';
 import 'post_detail_screen.dart';
+import '../utils/text_utils.dart';
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({Key? key}) : super(key: key);
@@ -92,12 +93,21 @@ class _ExploreScreenState extends State<ExploreScreen> {
       final category = _selectedFilter == 'Todos' ? null : _selectedFilter;
       final int? categoryId = _categoryNameToId[_selectedFilter];
       final fetched = await _postService.fetchPostsPaged(title: title, category: category, categoryId: categoryId, page: _page, size: _size);
-      // If backend does not filter by category name, apply client-side filter by category
+      // Apply client-side filters so search works even if backend doesn't support params
       List<Post> filteredFetched = fetched;
+      final queryText = _searchController.text.trim().toLowerCase();
       if (category != null && category.isNotEmpty) {
-        filteredFetched = fetched.where((p) {
+        filteredFetched = filteredFetched.where((p) {
           final name = p.categoryId != null ? (_categoryById[p.categoryId!] ?? '') : '';
           return name.toLowerCase() == category.toLowerCase();
+        }).toList();
+      }
+      if (queryText.isNotEmpty) {
+        filteredFetched = filteredFetched.where((p) {
+          final title = p.title.toLowerCase();
+          final body = p.body.toLowerCase();
+          final categoryName = p.categoryId != null ? (_categoryById[p.categoryId!] ?? '').toLowerCase() : '';
+          return title.contains(queryText) || body.contains(queryText) || categoryName.contains(queryText);
         }).toList();
       }
       setState(() {
@@ -283,8 +293,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
                             onTap: () {
                               Navigator.of(context).push(MaterialPageRoute(builder: (_) => PostDetailScreen(post: post)));
                             },
-                            child: _buildDocumentCard(
-                              title: post.title,
+                              child: _buildDocumentCard(
+                              title: sanitizeText(post.title),
                               category: post.categoryId != null ? (_categoryById[post.categoryId!] ?? 'General') : 'General',
                               date: 'Reciente',
                             ),
