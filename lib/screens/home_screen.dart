@@ -334,6 +334,33 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
     }
   }
 
+  Future<void> _runScrapper() async {
+    try {
+      final response = await http.get(
+        Uri.parse('https://nexora-scrapper-kqdt6.ondigitalocean.app/scrape/all'),
+      );
+      if (mounted) {
+        if (response.statusCode == 200) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Scrapper ejecutado exitosamente')),
+          );
+          // Recargar posts después del scraping
+          _loadPosts();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: ${response.statusCode}')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al ejecutar scrapper: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -369,6 +396,18 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
                     ),
                   ),
                   const Spacer(),
+                  ElevatedButton(
+                    onPressed: _runScrapper,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF5B9FED),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: const Text('Scrapper'),
+                  ),
                 ],
               )
 
@@ -565,7 +604,7 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
                 height: 1.4,
               ),
             ),
-            if (post.fileUrl != null) ...[
+            if (post.fileUrl != null && post.fileUrl!.isNotEmpty) ...[
               const SizedBox(height: 12),
               FutureBuilder<Uint8List?>(
                 future: _fetchFileBytes(post.fileUrl!),
@@ -582,7 +621,7 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
                     );
                   }
                   final bytes = snapshot.data;
-                  if (bytes != null) {
+                  if (bytes != null && bytes.isNotEmpty) {
                     return ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: Image.memory(
@@ -593,27 +632,8 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
                       ),
                     );
                   }
-                  // Fallback to network image without auth header
-                  return ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.network(
-                      post.fileUrl!,
-                      height: 160,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stack) => Container(
-                        height: 160,
-                        width: double.infinity,
-                        color: Colors.grey[100],
-                        child: Center(
-                          child: Text(
-                            'No se pudo cargar el archivo',
-                            style: TextStyle(color: Colors.grey[600]),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
+                  // Si no hay bytes, no mostrar nada (post solo texto)
+                  return const SizedBox.shrink();
                 },
               ),
             ],
